@@ -2,17 +2,29 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { rateLimit } from "@/lib/rate-limit";
 
-const LIMIT = 5;
-const WINDOW_MS = 60_000;
+const LIMITS: Record<string, { limit: number; windowMs: number }> = {
+  "/api/register": { limit: 5, windowMs: 60_000 },
+  "/api/auth/callback/credentials": { limit: 5, windowMs: 60_000 },
+  "/api/books": { limit: 20, windowMs: 60_000 },
+};
 
 export function middleware(request: NextRequest) {
-  const ip = request.headers.get("x-forwarded-for")?.split(",")[0].trim() ?? "unknown";
-  const key = `${ip}:${request.nextUrl.pathname}`;
-  const { success, remaining } = rateLimit(key, LIMIT, WINDOW_MS);
+  const pathname = request.nextUrl.pathname;
+  const rule = LIMITS[pathname];
+
+  if (!rule) {
+    return NextResponse.next();
+  }
+
+  const ip =
+    request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ??
+    "unknown";
+  const key = `${ip}:${pathname}`;
+  const { success, remaining } = rateLimit(key, rule.limit, rule.windowMs);
 
   if (!success) {
     return NextResponse.json(
-      { error: "Too many requests. Please try again later." },
+      { error: "Too many requests. Please try again in a minute." },
       { status: 429 }
     );
   }
@@ -23,5 +35,5 @@ export function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/api/register", "/api/auth/callback/credentials"],
+  matcher: ["/api/register", "/api/auth/callback/credentials", "/api/books"],
 };
